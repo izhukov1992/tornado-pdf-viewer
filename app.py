@@ -4,6 +4,7 @@ import tornado.web
 
 
 DB_NAME = 'toz.db'
+MEDIA_DIR = 'uploads'
 
 
 class Application(tornado.web.Application):
@@ -13,6 +14,7 @@ class Application(tornado.web.Application):
         handlers = [
             (r'/login', LoginHandler),
             (r'/', IndexHandler),
+            (r'/upload', UploadFileHandler),
         ]
 
         # Define options
@@ -64,6 +66,34 @@ class IndexHandler(BaseHandler):
 
         # Render and return main page with list of files
         self.render('templates/index.html', files=files)
+
+
+class UploadFileHandler(BaseHandler):
+
+    @tornado.web.authenticated
+    def post(self):
+        # Get filename and byte-array of files from post request
+        filename = self.request.files['file'][0]['filename']
+        file = self.request.files['file'][0]['body']
+
+        # Create folder for uploads, if it doesn't exist
+        if not os.path.exists(MEDIA_DIR):
+            os.mkdir(MEDIA_DIR)
+
+        # Create new file on disk in upload folder with filename from request
+        with open(os.path.join(MEDIA_DIR, filename), 'wb') as f:
+            # Write byte-array from request to the file
+            f.write(file)
+
+            # Get username of current user from cookie
+            username = tornado.escape.xhtml_escape(self.current_user)
+
+            # Add entry with filename and uploader username to database
+            self.application.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
+            self.application.db.commit()
+
+        # Reddirect to main page
+        self.redirect('/')
 
 
 if __name__ == '__main__':
