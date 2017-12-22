@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>User dashboard</title>
+  </head>
+  <body>
+    <form id="file" action="/upload" method="post" enctype="multipart/form-data">
+      <input type="file" name="file" accept="application/pdf" />
+      <input type="submit" value="upload" />
+    </form>
+
+    <div id="content">
+    {% if files %}
+      <p>Files:</p>
+      <table>
+      {% for file in files %}
+      <tr>
+        <td>{{ file[2] }}</td>
+        <td><a href='/download/{{ file[0] }}'>{{ file[1] }}</a></td>
+        <td><a href='/delete/{{ file[0] }}'>delete</a></td>
+      </tr>
+      {% end %}
+      </table>
+    {% else %}
+      <p>There are no any files</p>
+    {% end %}
+    </div>
+	<!--<script src="/static/js/client.js"></script>-->
+  </body>
+</html>
