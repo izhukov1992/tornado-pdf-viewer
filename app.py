@@ -16,6 +16,7 @@ class Application(tornado.web.Application):
             (r'/', IndexHandler),
             (r'/upload', UploadFileHandler),
             (r'/delete/([^/]+)', DeleteFileHandler),
+            (r'/download/([^/]+)', DownloadFileHandler),
         ]
 
         # Define options
@@ -120,6 +121,30 @@ class DeleteFileHandler(BaseHandler):
 
         # Reddirect to main page
         self.redirect('/')
+
+
+class DownloadFileHandler(BaseHandler):
+
+    @tornado.web.authenticated
+    def get(self, id):
+        # Get entry of file from database with ID from request
+        self.application.db_cursor.execute('SELECT filename FROM files WHERE id=%d' % (int(id)))
+        file = self.application.db_cursor.fetchall()
+
+        # Get filename from first column of first row
+        filename = file[0][0]
+
+        # Add headers to response
+        self.set_header('Content-Type', 'application/force-download')
+        self.set_header('Content-Disposition', 'attachment; filename=%s' % filename)
+
+        # Open file from disk
+        with open(os.path.join(MEDIA_DIR, filename), 'rb') as f:
+            # Read file and write to response
+            self.write(f.read())
+
+            # Complete response
+            self.finish()
 
 
 if __name__ == '__main__':
