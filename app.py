@@ -15,6 +15,7 @@ class Application(tornado.web.Application):
             (r'/login', LoginHandler),
             (r'/', IndexHandler),
             (r'/upload', UploadFileHandler),
+            (r'/delete/([^/]+)', DeleteFileHandler),
         ]
 
         # Define options
@@ -91,6 +92,31 @@ class UploadFileHandler(BaseHandler):
             # Add entry with filename and uploader username to database
             self.application.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
             self.application.db.commit()
+
+        # Reddirect to main page
+        self.redirect('/')
+
+
+class DeleteFileHandler(BaseHandler):
+
+    @tornado.web.authenticated
+    def get(self, id):
+        # Get entry of file from database with ID from request
+        self.application.db_cursor.execute('SELECT filename FROM files WHERE id=%d' % (int(id)))
+        file = self.application.db_cursor.fetchall()
+
+        # Get filename from first column of first row
+        filename = file[0][0]
+
+        try:
+            # Remove file from disk
+            os.remove(os.path.join(MEDIA_DIR, filename))
+        except:
+            pass
+
+        # Remove entry of file from database with ID from request
+        self.application.db_cursor.execute('DELETE FROM files WHERE id=%d' % (int(id)))
+        self.application.db.commit()
 
         # Reddirect to main page
         self.redirect('/')
