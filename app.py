@@ -17,6 +17,8 @@ class Application(tornado.web.Application):
             (r'/upload', UploadFileHandler),
             (r'/delete/([^/]+)', DeleteFileHandler),
             (r'/download/([^/]+)', DownloadFileHandler),
+            #(r'/static/(.*)', tornado.web.StaticFileHandler, {'path': 'staticfiles'}),
+            #(r'/files', FilesHandler),
         ]
 
         # Define options
@@ -145,6 +147,42 @@ class DownloadFileHandler(BaseHandler):
 
             # Complete response
             self.finish()
+
+"""
+class FilesHandler(websocket.WebSocketHandler):
+
+    def send_files_list(self):
+        c.execute('SELECT * FROM files ORDER BY id')
+        files = [{'id': f[0], 'filename': f[1], 'username': f[2]} for f in c.fetchall()]
+        data = json.dumps(files)
+        self.write_message(data)
+
+    def open(self):
+        self.send_files_list()
+
+    def on_message(self, message):
+        data = json.loads(message)
+        action = data.get('action')
+        file_id = data.get('file_id')
+
+        c.execute('SELECT filename FROM files WHERE id=%d' % (int(file_id)))
+        file = c.fetchall()
+
+        if action == 'delete':
+            try:
+                os.remove(os.path.join(MEDIA_DIR, file[0][0]))
+            except:
+                pass
+
+            c.execute('DELETE FROM files WHERE id=%d' % (int(file_id)))
+            conn.commit()
+
+        elif action == 'download':
+            # TODO
+            # https://gist.github.com/alejandrobernardis/1790864
+            pass
+
+        self.send_files_list()"""
 
 
 if __name__ == '__main__':
