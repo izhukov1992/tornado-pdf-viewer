@@ -2,8 +2,8 @@ import os
 import sqlite3
 import tornado.web
 import io
-from PyPDF2 import PdfFileWriter, PdfFileReader
-from PIL import Image
+#from PyPDF2 import PdfFileWriter, PdfFileReader
+#from PIL import Image
 
 
 DB_NAME = 'toz.db'
@@ -104,15 +104,63 @@ class UploadFileHandler(BaseHandler):
             self.application.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
             self.application.db.commit()
 
+        import PyPDF2
+        from PyPDF2 import PdfFileWriter, PdfFileReader
+        #from wand.image import Image
+        src_pdf = PyPDF2.PdfFileReader(open(os.path.join(dirname, filename), "rb"))
+        dst_pdf = PyPDF2.PdfFileWriter()
+        dst_pdf.addPage(src_pdf.getPage(0))
 
-        from wand.image import Image
+        pdf_bytes = io.BytesIO()
+        dst_pdf.write(pdf_bytes)
+        pdf_bytes.seek(0)
+
+        """img = Image(file = pdf_bytes, resolution = 300)
+        img.convert("png")
+        img.save(filename = os.path.join(dirname, filename.split('.')[0] + '.png'))"""
+        from PIL import Image
+        
+        """image = Image.new('RGBA', (100, 100))
+        image.save('pil_image.png','PNG')
+        image.convert('RGBA').save(pdf_bytes, format='PNG')
+        pdf_bytes.seek(0)"""
+        image = Image.frombuffer('RGBA', (1000, 1000), pdf_bytes)
+        image.save('pil_image.png','PNG')
+        pdf_bytes.seek(0)
+        
+        
+        
+        
+        """from PIL import ImageFile
+        p = ImageFile.Parser()
+        p.feed(io.StringIO(pdf_bytes))
+        im = p.close()
+        im.save(os.path.join(dirname, filename.split('.')[0] + '.png'))"""
+        """try:
+            from cStringIO import StringIO
+        except ImportError:
+            from StringIO import StringIO
+
+        image_buffer = StringIO()
+
+        img = Image.open(pdf_bytes)
+        img.save(os.path.join(dirname, filename.split('.')[0] + '.png'))
+        
+        
+        self.image.convert(new_mode).save(image_buffer, format=output_format)
+        image_buffer.seek(0)"""
+        """img = Image.frombytes(mode="RGB", size=(300,300), data=io.StringIO())
+        img.save(os.path.join(dirname, filename.split('.')[0] + '.png'))"""
+
+        
+        """from wand.image import Image
         # Converting first page into JPG
         with Image(filename="/thumbnail.pdf[0]") as img:
             img.save(filename="/temp.jpg")
         # Resizing this image
         with Image(filename="/temp.jpg") as img:
             img.resize(200, 150)
-            img.save(filename="/thumbnail_resize.jpg")
+            img.save(filename="/thumbnail_resize.jpg")"""
 
         """src_pdf = PdfFileReader(open(os.path.join(dirname, filename), "rb"))
 
