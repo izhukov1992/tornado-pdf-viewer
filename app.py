@@ -33,7 +33,11 @@ class Application(tornado.web.Application):
         # Initialize application
         super(Application, self).__init__(handlers, **settings)
 
-        # Initialize connection to SQLite3 database
+        # Initialize SQLite3 database
+        self.db_init()
+
+    def db_init(self):
+        # Initialize connection to SQLite3 database and store cursor
         self.db = sqlite3.connect(DB_NAME)
         self.db_cursor = self.db.cursor()
 
@@ -42,6 +46,29 @@ class Application(tornado.web.Application):
             self.db_cursor.execute('CREATE TABLE files (id INTEGER PRIMARY KEY, filename VARCHAR(255), username VARCHAR(255))')
         except sqlite3.OperationalError:
             pass
+
+    def get_files(self):
+        # Get list of files from database
+        self.application.db_cursor.execute('SELECT * FROM files ORDER BY id')
+        files = self.application.db_cursor.fetchall()
+        return files
+
+    def add_file(self, filename, username):
+        # Add entry with filename and uploader username to database
+        self.application.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
+        self.application.db.commit()
+
+    def remove_files(self, id):
+        # Remove files from disk
+        try:
+            shutil.rmtree(dirname)
+        except:
+            # Files have already been deleted
+            pass
+
+        # Remove entry of file from database with ID from request
+        self.application.db_cursor.execute('DELETE FROM files WHERE id=%d' % (int(id)))
+        self.application.db.commit()
 
 
 class BaseHandler(tornado.web.RequestHandler):
@@ -68,8 +95,7 @@ class IndexHandler(BaseHandler):
     @tornado.web.authenticated
     def get(self):
         # Get list of files from database
-        self.application.db_cursor.execute('SELECT * FROM files ORDER BY id')
-        files = self.application.db_cursor.fetchall()
+        files = self.application.get_files()
 
         # Render and return main page with list of files
         self.render('templates/index.html', files=files)
@@ -79,23 +105,29 @@ class UploadFileHandler(BaseHandler):
 
     @tornado.web.authenticated
     def post(self):
-        # Get filename and byte-array of files from post request
-        filename = self.request.files['file'][0]['filename']
+        # Get byte-array and filename of file from post request
         file = self.request.files['file'][0]['body']
+        filename = self.request.files['file'][0]['filename']
+
+        # Define prefix (name without extension)
+        prfix = filename.split('.')[0]
+
+        # Define subfolder name
+        dirname = os.path.join(MEDIA_DIR, prfix)
+
+        # Define full name of PDF
+        fullname = os.path.join(dirname, filename)
 
         # Create folder for uploads, if it doesn't exist
         if not os.path.exists(MEDIA_DIR):
             os.mkdir(MEDIA_DIR)
-
-        # Define subfolder name
-        dirname = os.path.join(MEDIA_DIR, filename.split('.')[0])
 
         # Create subfolder for images converyed from PDF
         if not os.path.exists(dirname):
             os.mkdir(dirname)
 
         # Create new file on disk in subfolder with filename from request
-        with open(os.path.join(dirname, filename), 'wb') as f:
+        with open(fullname, 'wb') as f:
             # Write byte-array from request to the file
             f.write(file)
 
@@ -103,22 +135,25 @@ class UploadFileHandler(BaseHandler):
             username = tornado.escape.xhtml_escape(self.current_user)
 
             # Add entry with filename and uploader username to database
-            self.application.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
-            self.application.db.commit()
+            self.application.add_file(filename, username)
 
-        src_pdf = PdfFileReader(open(os.path.join(dirname, filename), "rb"))
+        # Read bytes of PDF file
+        src_pdf = PdfFileReader(open(fullname, 'rb'))
 
+        # Read each page and convert to image
         for i, page in enumerate(src_pdf.pages, 1):
             dst_pdf = PdfFileWriter()
             dst_pdf.addPage(page)
 
+            # Read page to byte stream
             pdf_bytes = io.BytesIO()
             dst_pdf.write(pdf_bytes)
             pdf_bytes.seek(0)
 
+            # Save PNG with white background without alpha channel from byte stream
             with Image(file = pdf_bytes, resolution = 300, background = Color('#fff')) as img:
                 img.alpha_channel = False
-                img.save(filename = os.path.join(dirname, filename.split('.')[0] + '-' + str(i) + '.png'))
+                img.save(filename = os.path.join(dirname, prfix + '-' + str(i) + '.png'))
 
         # Reddirect to main page
         self.redirect('/')
@@ -128,9 +163,9 @@ class DeleteFileHandler(BaseHandler):
 
     @tornado.web.authenticated
     def get(self, id):
-        # Get entry of file from database with ID from request
-        self.application.db_cursor.execute('SELECT filename FROM files WHERE id=%d' % (int(id)))
-        file = self.application.db_cursor.fetchall()
+        # Get byte-array and filename of file from post request
+        file = self.request.files['file'][0]['body']
+        filename = self.request.files['file'][0]['filename']
 
         # Get filename from first column of first row
         filename = file[0][0]
@@ -139,15 +174,7 @@ class DeleteFileHandler(BaseHandler):
         dirname = os.path.join(MEDIA_DIR, filename.split('.')[0])
 
         # Remove files from disk
-        try:
-            shutil.rmtree(dirname)
-        except:
-            # Files have already been deleted 
-            pass
-
-        # Remove entry of file from database with ID from request
-        self.application.db_cursor.execute('DELETE FROM files WHERE id=%d' % (int(id)))
-        self.application.db.commit()
+        self.application.remove_files(id)
 
         # Reddirect to main page
         self.redirect('/')
@@ -157,9 +184,9 @@ class DownloadFileHandler(BaseHandler):
 
     @tornado.web.authenticated
     def get(self, id):
-        # Get entry of file from database with ID from request
-        self.application.db_cursor.execute('SELECT filename FROM files WHERE id=%d' % (int(id)))
-        file = self.application.db_cursor.fetchall()
+        # Get byte-array and filename of file from post request
+        file = self.request.files['file'][0]['body']
+        filename = self.request.files['file'][0]['filename']
 
         # Get filename from first column of first row
         filename = file[0][0]
@@ -171,13 +198,21 @@ class DownloadFileHandler(BaseHandler):
         self.set_header('Content-Type', 'application/force-download')
         self.set_header('Content-Disposition', 'attachment; filename=%s' % filename)
 
-        # Open file from disk
-        with open(os.path.join(dirname, filename), 'rb') as f:
-            # Read file and write to response
-            self.write(f.read())
+        try:
+            # Open file from disk
+            with open(os.path.join(dirname, filename), 'rb') as f:
+                # Read file and write to response
+                self.write(f.read())
 
-            # Complete response
-            self.finish()
+                # Complete response
+                self.finish()
+
+        except FileNotFoundError:
+            # File was removed
+            # Remove files from disk
+            self.application.remove_files(id)
+
+            # TODO: 404 response
 
 
 if __name__ == '__main__':
