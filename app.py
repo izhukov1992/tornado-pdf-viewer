@@ -1,6 +1,9 @@
 import os
 import sqlite3
 import tornado.web
+import io
+from PyPDF2 import PdfFileWriter, PdfFileReader
+from PIL import Image
 
 
 DB_NAME = 'toz.db'
@@ -82,8 +85,15 @@ class UploadFileHandler(BaseHandler):
         if not os.path.exists(MEDIA_DIR):
             os.mkdir(MEDIA_DIR)
 
-        # Create new file on disk in upload folder with filename from request
-        with open(os.path.join(MEDIA_DIR, filename), 'wb') as f:
+        # Define subfolder name
+        dirname = os.path.join(MEDIA_DIR, filename.split('.')[0])
+
+        # Create subfolder for images converyed from PDF
+        if not os.path.exists(dirname):
+            os.mkdir(dirname)
+
+        # Create new file on disk in subfolder with filename from request
+        with open(os.path.join(dirname, filename), 'wb') as f:
             # Write byte-array from request to the file
             f.write(file)
 
@@ -93,6 +103,68 @@ class UploadFileHandler(BaseHandler):
             # Add entry with filename and uploader username to database
             self.application.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
             self.application.db.commit()
+
+
+        from wand.image import Image
+        # Converting first page into JPG
+        with Image(filename="/thumbnail.pdf[0]") as img:
+            img.save(filename="/temp.jpg")
+        # Resizing this image
+        with Image(filename="/temp.jpg") as img:
+            img.resize(200, 150)
+            img.save(filename="/thumbnail_resize.jpg")
+
+        """src_pdf = PdfFileReader(open(os.path.join(dirname, filename), "rb"))
+
+        # Get the first page of the PDF #
+        dst_pdf = PdfFileWriter()
+        dst_pdf.addPage(src_pdf.getPage(0))
+        
+        pdf_bytes = io.BytesIO()
+        dst_pdf.write(pdf_bytes)
+        pdf_bytes.seek(0)
+
+        file_name = os.path.join(dirname, filename.split('.')[0] + '.png')
+        img = Image.open(pdf_bytes)
+        img.save(file_name, 'PNG')
+        pdf_bytes.flush()"""
+        
+        """
+        number = 0
+        
+        src_pdf = PdfFileReader(open(os.path.join(dirname, filename), "rb"))  
+        page = 0 
+        xObject = src_pdf.getPage(page)
+
+        xObject = xObject['/Resources']['/XObject'].getObject()
+
+        for obj in xObject:
+
+            if xObject[obj]['/Subtype'] == '/Image':
+                size = (xObject[obj]['/Width'], xObject[obj]['/Height'])
+                data = xObject[obj]._data
+                if xObject[obj]['/ColorSpace'] == '/DeviceRGB':
+                    mode = "RGB"
+                else:
+                    mode = "P"
+
+                imagename = os.path.join(dirname, filename.split('.')[0])
+
+                if xObject[obj]['/Filter'] == '/FlateDecode':
+                    img = Image.frombytes(mode, size, data)
+                    img.save(imagename + ".png")
+                    number += 1
+                elif xObject[obj]['/Filter'] == '/DCTDecode':
+                    img = open(imagename + ".jpg", "wb")
+                    img.write(data)
+                    img.close()
+                    number += 1
+                elif xObject[obj]['/Filter'] == '/JPXDecode':
+                    img = open(imagename + ".jp2", "wb")
+                    img.write(data)
+                    img.close()
+                    number += 1"""
+        
 
         # Reddirect to main page
         self.redirect('/')
@@ -109,9 +181,13 @@ class DeleteFileHandler(BaseHandler):
         # Get filename from first column of first row
         filename = file[0][0]
 
+        # Define subfolder name
+        dirname = os.path.join(MEDIA_DIR, filename.split('.')[0])
+
         try:
             # Remove file from disk
-            os.remove(os.path.join(MEDIA_DIR, filename))
+            os.remove(os.path.join(dirname, filename))
+            os.rmdir(dirname)
         except:
             pass
 
@@ -134,12 +210,15 @@ class DownloadFileHandler(BaseHandler):
         # Get filename from first column of first row
         filename = file[0][0]
 
+        # Define subfolder name
+        dirname = os.path.join(MEDIA_DIR, filename.split('.')[0])
+
         # Add headers to response
         self.set_header('Content-Type', 'application/force-download')
         self.set_header('Content-Disposition', 'attachment; filename=%s' % filename)
 
         # Open file from disk
-        with open(os.path.join(MEDIA_DIR, filename), 'rb') as f:
+        with open(os.path.join(dirname, filename), 'rb') as f:
             # Read file and write to response
             self.write(f.read())
 
