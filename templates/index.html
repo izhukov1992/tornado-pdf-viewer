@@ -14,13 +14,19 @@
     {% if files %}
       <p>Files:</p>
       <table>
-      {% for file in files %}
-      <tr>
-        <td>{{ file[2] }}</td>
-        <td><a href='/download/{{ file[0] }}'>{{ file[1] }}</a></td>
-        <td><a href='/delete/{{ file[0] }}'>delete</a></td>
-      </tr>
-      {% end %}
+        <tr>
+          <th>User</th>
+          <th>Download</th>
+          <th colspan="2"></th>
+        </tr>
+        {% for file in files %}
+        <tr>
+          <td>{{ file[2] }}</td>
+          <td><a href='/download/{{ file[0] }}'>{{ file[1] }}</a></td>
+          <td><a href='/review/{{ file[0] }}'>review</a></td>
+          <td><a href='/delete/{{ file[0] }}'>delete</a></td>
+        </tr>
+        {% end %}
       </table>
     {% else %}
       <p>There are no any files</p>

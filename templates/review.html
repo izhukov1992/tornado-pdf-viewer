@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Review file {{ filename }}</title>
+  </head>
+  <body>
+    <div id="content">
+      <p>Pages:</p>
+      <table>
+        {% for page in pages%}
+        <tr>
+          <td><img src="/uploads/{{ prefix }}/{{ prefix }}-{{ page }}.png" /></td>
+        </tr>
+        {% end %}
+      </table>
+      <a href="/">Go back</a>
+    </div>
+  </body>
+</html>

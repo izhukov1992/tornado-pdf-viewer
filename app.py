@@ -22,6 +22,8 @@ class Application(tornado.web.Application):
             (r'/upload', UploadFileHandler),
             (r'/delete/([^/]+)', DeleteFileHandler),
             (r'/download/([^/]+)', DownloadFileHandler),
+            (r'/review/([^/]+)', ReviewFileHandler),
+            (r'/uploads/(.*)', tornado.web.StaticFileHandler, {'path': 'uploads'}),
         ]
 
         # Define options
@@ -43,7 +45,7 @@ class Application(tornado.web.Application):
 
         # Create table for files
         try:
-            self.db_cursor.execute('CREATE TABLE files (id INTEGER PRIMARY KEY, filename VARCHAR(255), username VARCHAR(255))')
+            self.db_cursor.execute('CREATE TABLE files (id INTEGER PRIMARY KEY, filename VARCHAR(255), username VARCHAR(255), pages INTEGER)')
         except sqlite3.OperationalError:
             pass
 
@@ -59,9 +61,9 @@ class Application(tornado.web.Application):
         file = self.db_cursor.fetchall()[0]
         return file
 
-    def add_file(self, filename, username):
+    def add_file(self, filename, username, pages):
         # Add entry with filename and uploader username to database
-        self.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
+        self.db_cursor.execute('INSERT INTO files (id, filename, username, pages) VALUES (NULL, "%s", "%s", %d)' % (filename, username, pages))
         self.db.commit()
 
     def remove_files(self, id):
@@ -116,10 +118,10 @@ class UploadFileHandler(BaseHandler):
         filename = self.request.files['file'][0]['filename']
 
         # Define prefix (name without extension)
-        prfix = filename.split('.')[0]
+        prefix = filename.split('.')[0]
 
         # Define subfolder name
-        dirname = os.path.join(MEDIA_DIR, prfix)
+        dirname = os.path.join(MEDIA_DIR, prefix)
 
         # Define full name of PDF
         fullname = os.path.join(dirname, filename)
@@ -153,13 +155,16 @@ class UploadFileHandler(BaseHandler):
             # Save PNG with white background without alpha channel from byte stream
             with Image(file = pdf_bytes, resolution = 300, background = Color('#fff')) as img:
                 img.alpha_channel = False
-                img.save(filename = os.path.join(dirname, prfix + '-' + str(i) + '.png'))
+                img.save(filename = os.path.join(dirname, prefix + '-' + str(i) + '.png'))
 
         # Get username of current user from cookie
         username = tornado.escape.xhtml_escape(self.current_user)
 
+        # Get pages count
+        pages = src_pdf.getNumPages()
+
         # Add entry with filename and uploader username to database
-        self.application.add_file(filename, username)
+        self.application.add_file(filename, username, pages)
 
         # Reddirect to main page
         self.redirect('/')
@@ -220,6 +225,26 @@ class DownloadFileHandler(BaseHandler):
             self.clear()
             self.set_status(404)
             self.render('templates/404.html')
+
+
+class ReviewFileHandler(BaseHandler):
+
+    @tornado.web.authenticated
+    def get(self, id):
+        # Get entry of file from database with ID from request
+        file = self.application.get_file(id)
+
+        # Get number of pages
+        pages = file[3]
+
+        # Get filename from the second column of row
+        filename = file[1]
+
+        # Define prefix (name without extension)
+        prefix = filename.split('.')[0]
+
+        # Render and return main page with list of files
+        self.render('templates/review.html', filename=filename, prefix=prefix, pages=range(1, pages+1))
 
 
 if __name__ == '__main__':
