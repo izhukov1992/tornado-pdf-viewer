@@ -49,14 +49,20 @@ class Application(tornado.web.Application):
 
     def get_files(self):
         # Get list of files from database
-        self.application.db_cursor.execute('SELECT * FROM files ORDER BY id')
-        files = self.application.db_cursor.fetchall()
+        self.db_cursor.execute('SELECT * FROM files ORDER BY id')
+        files = self.db_cursor.fetchall()
         return files
+
+    def get_file(self, id):
+        # Get entry of file from database
+        self.db_cursor.execute('SELECT * FROM files WHERE id=%d' % (int(id)))
+        file = self.db_cursor.fetchall()[0]
+        return file
 
     def add_file(self, filename, username):
         # Add entry with filename and uploader username to database
-        self.application.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
-        self.application.db.commit()
+        self.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
+        self.db.commit()
 
     def remove_files(self, id):
         # Remove files from disk
@@ -67,8 +73,8 @@ class Application(tornado.web.Application):
             pass
 
         # Remove entry of file from database with ID from request
-        self.application.db_cursor.execute('DELETE FROM files WHERE id=%d' % (int(id)))
-        self.application.db.commit()
+        self.db_cursor.execute('DELETE FROM files WHERE id=%d' % (int(id)))
+        self.db.commit()
 
 
 class BaseHandler(tornado.web.RequestHandler):
@@ -131,12 +137,6 @@ class UploadFileHandler(BaseHandler):
             # Write byte-array from request to the file
             f.write(file)
 
-            # Get username of current user from cookie
-            username = tornado.escape.xhtml_escape(self.current_user)
-
-            # Add entry with filename and uploader username to database
-            self.application.add_file(filename, username)
-
         # Read bytes of PDF file
         src_pdf = PdfFileReader(open(fullname, 'rb'))
 
@@ -155,6 +155,12 @@ class UploadFileHandler(BaseHandler):
                 img.alpha_channel = False
                 img.save(filename = os.path.join(dirname, prfix + '-' + str(i) + '.png'))
 
+        # Get username of current user from cookie
+        username = tornado.escape.xhtml_escape(self.current_user)
+
+        # Add entry with filename and uploader username to database
+        self.application.add_file(filename, username)
+
         # Reddirect to main page
         self.redirect('/')
 
@@ -163,12 +169,11 @@ class DeleteFileHandler(BaseHandler):
 
     @tornado.web.authenticated
     def get(self, id):
-        # Get byte-array and filename of file from post request
-        file = self.request.files['file'][0]['body']
-        filename = self.request.files['file'][0]['filename']
+        # Get entry of file from database with ID from request
+        file = self.application.get_file(id)
 
-        # Get filename from first column of first row
-        filename = file[0][0]
+        # Get filename from the second column of row
+        filename = file[1]
 
         # Define subfolder name
         dirname = os.path.join(MEDIA_DIR, filename.split('.')[0])
@@ -184,23 +189,22 @@ class DownloadFileHandler(BaseHandler):
 
     @tornado.web.authenticated
     def get(self, id):
-        # Get byte-array and filename of file from post request
-        file = self.request.files['file'][0]['body']
-        filename = self.request.files['file'][0]['filename']
+        # Get entry of file from database with ID from request
+        file = self.application.get_file(id)
 
-        # Get filename from first column of first row
-        filename = file[0][0]
+        # Get filename from the second column of row
+        filename = file[1]
 
         # Define subfolder name
         dirname = os.path.join(MEDIA_DIR, filename.split('.')[0])
 
-        # Add headers to response
-        self.set_header('Content-Type', 'application/force-download')
-        self.set_header('Content-Disposition', 'attachment; filename=%s' % filename)
-
         try:
             # Open file from disk
             with open(os.path.join(dirname, filename), 'rb') as f:
+                # Add headers to response
+                self.set_header('Content-Type', 'application/force-download')
+                self.set_header('Content-Disposition', 'attachment; filename=%s' % filename)
+
                 # Read file and write to response
                 self.write(f.read())
 
@@ -213,6 +217,8 @@ class DownloadFileHandler(BaseHandler):
             self.application.remove_files(id)
 
             # TODO: 404 response
+            # Reddirect to main page
+            self.redirect('/')
 
 
 if __name__ == '__main__':
