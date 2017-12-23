@@ -178,7 +178,7 @@ class DeleteFileHandler(BaseHandler):
         # Define subfolder name
         dirname = os.path.join(MEDIA_DIR, filename.split('.')[0])
 
-        # Remove files from disk
+        # Remove entry from database and related files from disk
         self.application.remove_files(id)
 
         # Reddirect to main page
@@ -213,12 +213,13 @@ class DownloadFileHandler(BaseHandler):
 
         except FileNotFoundError:
             # File was removed
-            # Remove files from disk
+            # Remove entry from database and related files from disk
             self.application.remove_files(id)
 
-            # TODO: 404 response
-            # Reddirect to main page
-            self.redirect('/')
+            # Return 404 respone
+            self.clear()
+            self.set_status(404)
+            self.render('templates/404.html')
 
 
 if __name__ == '__main__':
