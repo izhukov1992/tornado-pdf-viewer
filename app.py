@@ -120,13 +120,51 @@ class UploadFileHandler(BaseHandler):
         img.save(filename = os.path.join(dirname, filename.split('.')[0] + '.png'))"""
         from PIL import Image
         
+        image = Image.open("directories.png")
+        
+        byteImgIO = io.BytesIO()
+        image.save(byteImgIO,'PNG')
+        byteImgIO.seek(0)
+        
+        img = Image.open(pdf_bytes)
+        img.save("directories2.png")
+        
         """image = Image.new('RGBA', (100, 100))
         image.save('pil_image.png','PNG')
         image.convert('RGBA').save(pdf_bytes, format='PNG')
         pdf_bytes.seek(0)"""
-        image = Image.frombuffer('RGBA', (1000, 1000), pdf_bytes)
-        image.save('pil_image.png','PNG')
-        pdf_bytes.seek(0)
+        
+        """l = src_pdf.getPage(0).mediaBox[2]
+        r = src_pdf.getPage(0).mediaBox[3]
+        image = Image.new('RGBA', (100, 100))
+        image.save('pil_image.png')
+        image.transform('RGBA').save(pdf_bytes, format='PNG')
+        pdf_bytes.seek(0)"""
+        
+        #image = Image.new('RGB', (100, 100))
+        #image.save('directories.png','PNG')
+        #byteImg = Image.open("directories.png")
+        #byteImg.save(pdf_bytes, "PNG")
+        """l = src_pdf.getPage(0).mediaBox[2]
+        r = src_pdf.getPage(0).mediaBox[3]
+        img = Image.frombytes(mode="RGBA", size=(l,r), data=pdf_bytes.read())
+        img.save(os.path.join(dirname, filename.split('.')[0] + '.png'))"""
+        
+        """byteImgIO = io.BytesIO()
+        byteImg = Image.open("directories.png")
+        byteImg.save(byteImgIO, "PNG")
+        byteImgIO.seek(0)
+        
+        byteImg = byteImgIO.read()
+        # Non test code
+        dataBytesIO = io.BytesIO(byteImg)
+        Image.open(dataBytesIO)"""
+        
+        """l = src_pdf.getPage(0).mediaBox[2]
+        r = src_pdf.getPage(0).mediaBox[3]
+        image = Image.frombuffer('RGBA', (l, r), pdf_bytes)
+        image.save(os.path.join(dirname, filename.split('.')[0] + '.png'))
+        pdf_bytes.seek(0)"""
         
         
         
