@@ -1,2 +1,5 @@
+PyPDF2==1.26.0
+Wand==0.4.4
 backports-abc==0.5
+magickwand==0.2
 tornado==4.5.2

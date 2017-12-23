@@ -2,8 +2,10 @@ import os
 import sqlite3
 import tornado.web
 import io
+import shutil
 from PyPDF2 import PdfFileWriter, PdfFileReader
-from PIL import Image
+from wand.image import Image
+from wand.color import Color
 
 
 DB_NAME = 'toz.db'
@@ -104,67 +106,19 @@ class UploadFileHandler(BaseHandler):
             self.application.db_cursor.execute('INSERT INTO files (id, filename, username) VALUES (NULL, "%s", "%s")' % (filename, username))
             self.application.db.commit()
 
+        src_pdf = PdfFileReader(open(os.path.join(dirname, filename), "rb"))
 
-        from wand.image import Image
-        # Converting first page into JPG
-        with Image(filename="/thumbnail.pdf[0]") as img:
-            img.save(filename="/temp.jpg")
-        # Resizing this image
-        with Image(filename="/temp.jpg") as img:
-            img.resize(200, 150)
-            img.save(filename="/thumbnail_resize.jpg")
+        for i, page in enumerate(src_pdf.pages, 1):
+            dst_pdf = PdfFileWriter()
+            dst_pdf.addPage(page)
 
-        """src_pdf = PdfFileReader(open(os.path.join(dirname, filename), "rb"))
+            pdf_bytes = io.BytesIO()
+            dst_pdf.write(pdf_bytes)
+            pdf_bytes.seek(0)
 
-        # Get the first page of the PDF #
-        dst_pdf = PdfFileWriter()
-        dst_pdf.addPage(src_pdf.getPage(0))
-        
-        pdf_bytes = io.BytesIO()
-        dst_pdf.write(pdf_bytes)
-        pdf_bytes.seek(0)
-
-        file_name = os.path.join(dirname, filename.split('.')[0] + '.png')
-        img = Image.open(pdf_bytes)
-        img.save(file_name, 'PNG')
-        pdf_bytes.flush()"""
-        
-        """
-        number = 0
-        
-        src_pdf = PdfFileReader(open(os.path.join(dirname, filename), "rb"))  
-        page = 0 
-        xObject = src_pdf.getPage(page)
-
-        xObject = xObject['/Resources']['/XObject'].getObject()
-
-        for obj in xObject:
-
-            if xObject[obj]['/Subtype'] == '/Image':
-                size = (xObject[obj]['/Width'], xObject[obj]['/Height'])
-                data = xObject[obj]._data
-                if xObject[obj]['/ColorSpace'] == '/DeviceRGB':
-                    mode = "RGB"
-                else:
-                    mode = "P"
-
-                imagename = os.path.join(dirname, filename.split('.')[0])
-
-                if xObject[obj]['/Filter'] == '/FlateDecode':
-                    img = Image.frombytes(mode, size, data)
-                    img.save(imagename + ".png")
-                    number += 1
-                elif xObject[obj]['/Filter'] == '/DCTDecode':
-                    img = open(imagename + ".jpg", "wb")
-                    img.write(data)
-                    img.close()
-                    number += 1
-                elif xObject[obj]['/Filter'] == '/JPXDecode':
-                    img = open(imagename + ".jp2", "wb")
-                    img.write(data)
-                    img.close()
-                    number += 1"""
-        
+            with Image(file = pdf_bytes, resolution = 300, background = Color('#fff')) as img:
+                img.alpha_channel = False
+                img.save(filename = os.path.join(dirname, filename.split('.')[0] + '-' + str(i) + '.png'))
 
         # Reddirect to main page
         self.redirect('/')
@@ -184,11 +138,11 @@ class DeleteFileHandler(BaseHandler):
         # Define subfolder name
         dirname = os.path.join(MEDIA_DIR, filename.split('.')[0])
 
+        # Remove files from disk
         try:
-            # Remove file from disk
-            os.remove(os.path.join(dirname, filename))
-            os.rmdir(dirname)
+            shutil.rmtree(dirname)
         except:
+            # Files have already been deleted 
             pass
 
         # Remove entry of file from database with ID from request
