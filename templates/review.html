@@ -3,14 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <title>Review file {{ filename }}</title>
+    <style>
+      img {
+          max-width: 600px;
+      }
+    </style>
   </head>
   <body>
-    <div id="content">
-      <p>Pages:</p>
+    <div>
       <table>
         {% for page in pages%}
         <tr>
-          <td><img src="/uploads/{{ prefix }}/{{ prefix }}-{{ page }}.png" /></td>
+          <td align="center"><img src="/uploads/{{ prefix }}/{{ prefix }}-{{ page }}.png" /></td>
+        </tr>
+        <tr>
+          <td align="center">{{ page }}</td>
         </tr>
         {% end %}
       </table>

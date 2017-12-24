@@ -5,13 +5,12 @@
     <title>User dashboard</title>
   </head>
   <body>
-    <form id="file" action="/upload" method="post" enctype="multipart/form-data">
-      <input type="file" name="file" accept="application/pdf" />
-      <input type="submit" value="upload" />
-    </form>
-
-    <div id="content">
-    {% if files %}
+    <div>
+      <form id="file" action="/upload" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" accept="application/pdf" />
+        <input type="submit" value="upload" />
+      </form>
+      {% if files %}
       <p>Files:</p>
       <table>
         <tr>
@@ -28,9 +27,9 @@
         </tr>
         {% end %}
       </table>
-    {% else %}
+      {% else %}
       <p>There are no any files</p>
-    {% end %}
+      {% end %}
     </div>
   </body>
 </html>
