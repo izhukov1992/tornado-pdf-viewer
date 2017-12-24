@@ -1,5 +1,10 @@
 # tornado-pdf-viewer
 
+* Uploading PDF
+* Downloading PDF
+* Converting PDF to PNG images
+* Viewing pages
+
 ## Installation
 
 * `sudo apt-get install python-wand`
@@ -10,3 +15,11 @@
 ## Running
 
 * `python app.py`
+
+## Stopping
+
+* `Ctrl + C`
+
+## Demo
+
+* Open `localhost:1337` in web-browser
