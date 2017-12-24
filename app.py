@@ -39,6 +39,8 @@ class Application(tornado.web.Application):
         # Initialize SQLite3 database
         self.db_init()
 
+        self.executor = tornado.concurrent.futures.ThreadPoolExecutor(8)
+
     def db_init(self):
         # Initialize connection to SQLite3 database and store cursor
         self.db = sqlite3.connect(DB_NAME)
@@ -87,6 +89,31 @@ class Application(tornado.web.Application):
         # Remove entry of file from database with ID from request
         self.db_cursor.execute('DELETE FROM files WHERE id=%d' % (int(id)))
         self.db.commit()
+
+    def convert_file(self, name, dirname, fullname):
+        # Read bytes of PDF file
+        with open(fullname, 'rb') as f:
+            try:
+                src_pdf = PdfFileReader(f)
+            except:
+                return
+
+            # Read each page and convert to image
+            for i, page in enumerate(src_pdf.pages, 1):
+                dst_pdf = PdfFileWriter()
+                dst_pdf.addPage(page)
+
+                # Read page to byte stream
+                pdf_bytes = io.BytesIO()
+                dst_pdf.write(pdf_bytes)
+                pdf_bytes.seek(0)
+
+                # Save PNG with white background without alpha channel from byte stream
+                with Image(file = pdf_bytes, resolution = 300, background = Color('#fff')) as img:
+                    img.alpha_channel = False
+
+                    # Save image with page number in name
+                    img.save(filename = os.path.join(dirname, name + '-' + str(i) + '.png'))
 
 
 class BaseHandler(tornado.web.RequestHandler):
@@ -175,10 +202,11 @@ class UploadFileHandler(BaseHandler):
             # Write byte-array from request to the file
             f.write(file)
 
-        # Read bytes of PDF file
+        # Get pages count
         with open(fullname, 'rb') as f:
             try:
                 src_pdf = PdfFileReader(f)
+                pages = src_pdf.getNumPages()
             except:
                 # If file is not PDF, remove file's folder
                 shutil.rmtree(dirname)
@@ -189,31 +217,14 @@ class UploadFileHandler(BaseHandler):
                 self.render('templates/400.html', error="File is not PDF")
                 return
 
-            # Read each page and convert to image
-            for i, page in enumerate(src_pdf.pages, 1):
-                dst_pdf = PdfFileWriter()
-                dst_pdf.addPage(page)
-
-                # Read page to byte stream
-                pdf_bytes = io.BytesIO()
-                dst_pdf.write(pdf_bytes)
-                pdf_bytes.seek(0)
-
-                # Save PNG with white background without alpha channel from byte stream
-                with Image(file = pdf_bytes, resolution = 300, background = Color('#fff')) as img:
-                    img.alpha_channel = False
-
-                    # Save image with page number in name
-                    img.save(filename = os.path.join(dirname, name + '-' + str(i) + '.png'))
-
         # Get username of current user from cookie
         username = tornado.escape.xhtml_escape(self.current_user)
 
-        # Get pages count
-        pages = src_pdf.getNumPages()
-
         # Add entry with filename and uploader username to database
         self.application.add_file(filename, username, pages, name)
+
+        # Convert PDF to images asynchronously
+        self.application.executor.submit(self.application.convert_file, name, dirname, fullname)
 
         # Reddirect to main page
         self.redirect('/')
