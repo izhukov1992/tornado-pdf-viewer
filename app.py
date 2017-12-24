@@ -13,6 +13,132 @@ DB_NAME = 'toz.db'
 MEDIA_DIR = 'uploads'
 
 
+class FileEntry:
+
+    def __init__(self, row):
+        self.id = row[0]
+        self.filename = row[1]
+        self.username = row[2]
+        self.pages = row[3]
+        self.folder = row[4]
+
+
+class FileList:
+
+    def __init__(self, rows):
+        self._files = []
+        self._index = 0
+
+        for row in rows:
+            self._files.append(FileEntry(row))
+
+    def __iter__(self):
+        self._index = 0
+        return self
+
+    def __next__(self):
+        self._index += 1
+        if len(self._files) >= self._index:
+            return self._files[self._index - 1]
+        else:
+            raise StopIteration
+
+    def __getitem__(self, item):
+        try:
+            return self._files[item]
+        except:
+            return None
+
+    def is_empty(self):
+        if self._files == []:
+            return True
+        return False
+
+
+class DataBase:
+
+    def __init__(self):
+        # Initialize connection to SQLite3 database and store cursor
+        self._connection = sqlite3.connect(DB_NAME)
+        self._cursor = self._connection.cursor()
+
+    def select(self, query):
+        self._cursor.execute(query)
+        rows = self._cursor.fetchall()
+        return rows
+
+    def execute(self, query):
+        self._cursor.execute(query)
+        self._connection.commit()
+
+
+class FileTableManager:
+
+    def __init__(self, db):
+        self._db = db
+
+        # Create table for files
+        try:
+            self._db.execute('CREATE TABLE files (id INTEGER PRIMARY KEY, filename VARCHAR(255), username VARCHAR(255), pages INTEGER, folder VARCHAR(255))')
+        except sqlite3.OperationalError:
+            # Table already exists
+            pass
+
+    def select_all_files(self):
+        # Get list of files from database
+        rows = self._db.select('SELECT * FROM files ORDER BY id')
+        files = FileList(rows)
+        return files
+
+    def select_file(self, id):
+        # Get entry of file from database
+        rows = self._db.select('SELECT * FROM files WHERE id=%d' % (int(id)))
+        files = FileList(rows)
+        return files[0]
+
+    def insert_file(self, filename, username, pages, folder):
+        # Add entry with filename, username, count of pages and folder to database
+        self._db.execute('INSERT INTO files (id, filename, username, pages, folder) VALUES (NULL, "%s", "%s", %d, "%s")' % (filename, username, pages, folder))
+
+    def delete_file(self, id):
+        # Remove entry of file from database with ID from request
+        self._db.execute('DELETE FROM files WHERE id=%d' % (int(id)))
+
+
+class PDFManager:
+
+    def convert(self, name, dirname, fullname):
+        # Read bytes of PDF file
+        with open(fullname, 'rb') as f:
+            try:
+                src_pdf = PdfFileReader(f)
+            except:
+                return
+
+            # Read each page and convert to image
+            for i, page in enumerate(src_pdf.pages, 1):
+                dst_pdf = PdfFileWriter()
+                dst_pdf.addPage(page)
+
+                # Read page to byte stream
+                pdf_bytes = io.BytesIO()
+                dst_pdf.write(pdf_bytes)
+                pdf_bytes.seek(0)
+
+                # Save PNG with white background without alpha channel from byte stream
+                with Image(file=pdf_bytes, resolution=300, background=Color('#fff')) as img:
+                    img.alpha_channel = False
+
+                    # Save image with page number in name
+                    img.save(filename = os.path.join(dirname, name + '-' + str(i) + '.png'))
+
+    def get_pages_count(self, fullname):
+        with open(fullname, 'rb') as f:
+            src_pdf = PdfFileReader(f)
+            pages = src_pdf.getNumPages()
+        return pages
+
+
 class Application(tornado.web.Application):
 
     def __init__(self):
@@ -37,92 +163,39 @@ class Application(tornado.web.Application):
         super(Application, self).__init__(handlers, **settings)
 
         # Initialize SQLite3 database
-        self.db_init()
+        self._db = DataBase()
 
+        # Initialize file table manager
+        self.ftm = FileTableManager(self._db)
+
+        # Initialize PDF manager
+        self.pdfm = PDFManager()
+
+        # Store executer of background coroutines
         self.executor = tornado.concurrent.futures.ThreadPoolExecutor(8)
-
-    def db_init(self):
-        # Initialize connection to SQLite3 database and store cursor
-        self.db = sqlite3.connect(DB_NAME)
-        self.db_cursor = self.db.cursor()
-
-        # Create table for files
-        try:
-            self.db_cursor.execute('CREATE TABLE files (id INTEGER PRIMARY KEY, filename VARCHAR(255), username VARCHAR(255), pages INTEGER, folder VARCHAR(255))')
-        except sqlite3.OperationalError:
-            pass
-
-    def get_files(self):
-        # Get list of files from database
-        self.db_cursor.execute('SELECT * FROM files ORDER BY id')
-        files = self.db_cursor.fetchall()
-        return files
-
-    def get_file(self, id):
-        # Get entry of file from database
-        self.db_cursor.execute('SELECT * FROM files WHERE id=%d' % (int(id)))
-        file = self.db_cursor.fetchall()[0]
-        return file
-
-    def add_file(self, filename, username, pages, folder):
-        # Add entry with filename and uploader username to database
-        self.db_cursor.execute('INSERT INTO files (id, filename, username, pages, folder) VALUES (NULL, "%s", "%s", %d, "%s")' % (filename, username, pages, folder))
-        self.db.commit()
-
-    def remove_files(self, id):
-        # Get entry of file from database with ID from request
-        file = self.get_file(id)
-
-        # Get name of folder from the fifth column of row
-        folder = file[4]
-
-        # Define subfolder name
-        dirname = os.path.join(MEDIA_DIR, folder)
-
-        # Remove files from disk
-        try:
-            shutil.rmtree(dirname)
-        except:
-            # Files have already been deleted
-            pass
-
-        # Remove entry of file from database with ID from request
-        self.db_cursor.execute('DELETE FROM files WHERE id=%d' % (int(id)))
-        self.db.commit()
-
-    def convert_file(self, name, dirname, fullname):
-        # Read bytes of PDF file
-        with open(fullname, 'rb') as f:
-            try:
-                src_pdf = PdfFileReader(f)
-            except:
-                return
-
-            # Read each page and convert to image
-            for i, page in enumerate(src_pdf.pages, 1):
-                dst_pdf = PdfFileWriter()
-                dst_pdf.addPage(page)
-
-                # Read page to byte stream
-                pdf_bytes = io.BytesIO()
-                dst_pdf.write(pdf_bytes)
-                pdf_bytes.seek(0)
-
-                # Save PNG with white background without alpha channel from byte stream
-                with Image(file = pdf_bytes, resolution = 300, background = Color('#fff')) as img:
-                    img.alpha_channel = False
-
-                    # Save image with page number in name
-                    img.save(filename = os.path.join(dirname, name + '-' + str(i) + '.png'))
 
 
 class BaseHandler(tornado.web.RequestHandler):
+
     def get_current_user(self):
         # Get username of current user from cookie
         return self.get_secure_cookie('user')
 
+    def response_user_error(self, error):
+        # Clear response, set status, and render template
+        self.clear()
+        self.set_status(400)
+        self.render('templates/400.html', error=error)
+
+    def response_not_found(self):
+        # Clear response, set status, and render template
+        self.clear()
+        self.set_status(404)
+        self.render('templates/404.html')
+
 
 class LoginHandler(BaseHandler):
+
     def get(self):
         # Render and return login page
         self.render('templates/login.html')
@@ -140,7 +213,7 @@ class IndexHandler(BaseHandler):
     @tornado.web.authenticated
     def get(self):
         # Get list of files from database
-        files = self.application.get_files()
+        files = self.application.ftm.select_all_files()
 
         # Render and return main page with list of files
         self.render('templates/index.html', files=files)
@@ -152,13 +225,11 @@ class UploadFileHandler(BaseHandler):
     def post(self):
         # Get byte-array and filename of file from post request
         try:
-            file = self.request.files['file'][0]['body']
             filename = self.request.files['file'][0]['filename']
+            payload = self.request.files['file'][0]['body']
         except:
             # If file is not choosen, return 400 respone
-            self.clear()
-            self.set_status(404)
-            self.render('templates/400.html', error="File is not choosen")
+            self.response_user_error("File is not choosen")
             return
 
         # Create folder for uploads, if it doesn't exist
@@ -200,31 +271,27 @@ class UploadFileHandler(BaseHandler):
         # Create new file on disk in subfolder with filename from request
         with open(fullname, 'wb') as f:
             # Write byte-array from request to the file
-            f.write(file)
+            f.write(payload)
 
         # Get pages count
-        with open(fullname, 'rb') as f:
-            try:
-                src_pdf = PdfFileReader(f)
-                pages = src_pdf.getNumPages()
-            except:
-                # If file is not PDF, remove file's folder
-                shutil.rmtree(dirname)
+        try:
+            pages = self.application.pdfm.get_pages_count(fullname)
+        except:
+            # If file is not PDF, remove file's folder
+            shutil.rmtree(dirname)
 
-                # Return 400 respone
-                self.clear()
-                self.set_status(404)
-                self.render('templates/400.html', error="File is not PDF")
-                return
+            # Return 400 respone
+            self.response_user_error("File is not PDF")
+            return
 
         # Get username of current user from cookie
         username = tornado.escape.xhtml_escape(self.current_user)
 
         # Add entry with filename and uploader username to database
-        self.application.add_file(filename, username, pages, name)
+        self.application.ftm.insert_file(filename, username, pages, name)
 
         # Convert PDF to images asynchronously
-        self.application.executor.submit(self.application.convert_file, name, dirname, fullname)
+        self.application.executor.submit(self.application.pdfm.convert, name, dirname, fullname)
 
         # Reddirect to main page
         self.redirect('/')
@@ -234,8 +301,21 @@ class DeleteFileHandler(BaseHandler):
 
     @tornado.web.authenticated
     def get(self, id):
+        # Get entry of file from database with ID from request
+        pdf = self.application.ftm.select_file(id)
+
+        # Define subfolder name
+        dirname = os.path.join(MEDIA_DIR, pdf.folder)
+
+        # Remove files from disk
+        try:
+            shutil.rmtree(dirname)
+        except:
+            # Files have already been deleted
+            pass
+
         # Remove entry from database and related files from disk
-        self.application.remove_files(id)
+        self.application.ftm.delete_file(id)
 
         # Reddirect to main page
         self.redirect('/')
@@ -246,26 +326,20 @@ class DownloadFileHandler(BaseHandler):
     @tornado.web.authenticated
     def get(self, id):
         # Get entry of file from database with ID from request
-        file = self.application.get_file(id)
-
-        # Get filename from the second column of row
-        filename = file[1]
-
-        # Get name of folder from the fifth column of row
-        folder = file[4]
+        pdf = self.application.ftm.select_file(id)
 
         # Define subfolder name
-        dirname = os.path.join(MEDIA_DIR, folder)
+        dirname = os.path.join(MEDIA_DIR, pdf.folder)
 
         # Define full name of file
-        fullname = os.path.join(dirname, filename)
+        fullname = os.path.join(dirname, pdf.filename)
 
         try:
             # Open file from disk
             with open(fullname, 'rb') as f:
                 # Add headers to response
                 self.set_header('Content-Type', 'application/force-download')
-                self.set_header('Content-Disposition', 'attachment; filename=%s' % filename)
+                self.set_header('Content-Disposition', 'attachment; filename=%s' % pdf.filename)
 
                 # Read file and write to response
                 self.write(f.read())
@@ -275,13 +349,8 @@ class DownloadFileHandler(BaseHandler):
 
         except FileNotFoundError:
             # File was removed
-            # Remove entry from database and related files from disk
-            self.application.remove_files(id)
-
             # Return 404 respone
-            self.clear()
-            self.set_status(404)
-            self.render('templates/404.html')
+            self.response_not_found()
 
 
 class ReviewFileHandler(BaseHandler):
@@ -289,19 +358,10 @@ class ReviewFileHandler(BaseHandler):
     @tornado.web.authenticated
     def get(self, id):
         # Get entry of file from database with ID from request
-        file = self.application.get_file(id)
-
-        # Get filename from the second column of row
-        filename = file[1]
-
-        # Get number of pages
-        pages = file[3]
-
-        # Get name of folder from the fifth column of row
-        folder = file[4]
+        pdf = self.application.ftm.select_file(id)
 
         # Render and return main page with list of files
-        self.render('templates/review.html', filename=filename, folder=folder, pages=range(1, pages+1))
+        self.render('templates/review.html', filename=pdf.filename, folder=pdf.folder, pages=range(1, pdf.pages+1))
 
 
 if __name__ == '__main__':

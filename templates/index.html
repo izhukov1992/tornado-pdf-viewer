@@ -10,25 +10,27 @@
         <input type="file" name="file" accept="application/pdf" required />
         <input type="submit" value="upload" />
       </form>
-      {% if files %}
+      {% if files.is_empty() %}
+      <p>There are no any files</p>
+      {% else %}
       <p>Files:</p>
       <table>
         <tr>
           <th>User</th>
           <th>Download</th>
+          <th>Pages</th>
           <th colspan="2"></th>
         </tr>
         {% for file in files %}
         <tr>
-          <td>{{ file[2] }}</td>
-          <td><a href='/download/{{ file[0] }}'>{{ file[1] }}</a></td>
-          <td><a href='/review/{{ file[0] }}'>review</a></td>
-          <td><a href='/delete/{{ file[0] }}'>delete</a></td>
+          <td>{{ file.username }}</td>
+          <td><a href='/download/{{ file.id }}'>{{ file.filename }}</a></td>
+          <td>{{ file.pages }}</td>
+          <td><a href='/review/{{ file.id }}'>review</a></td>
+          <td><a href='/delete/{{ file.id }}'>delete</a></td>
         </tr>
         {% end %}
       </table>
-      {% else %}
-      <p>There are no any files</p>
       {% end %}
     </div>
   </body>
