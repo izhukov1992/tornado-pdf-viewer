@@ -1,0 +1,10 @@
+services:
+  web:
+    build:
+      dockerfile: Dockerfile
+    volumes:
+      - ./uploads:/app/uploads
+      - ./toz.db:/app/toz.db
+    ports:
+      - 1337:1337
+      - 1338:1338

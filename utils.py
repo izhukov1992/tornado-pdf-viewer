@@ -1,42 +1,32 @@
 import os
-import io
-from PyPDF2 import PdfFileWriter, PdfFileReader
-from wand.image import Image
-from wand.color import Color
+import pdf2image
+import email.message
+
+from PyPDF2 import PdfReader
 
 
 class PDFUtil:
 
     @staticmethod
-    def convert(name, dirname, fullname):
-        # Read bytes of PDF file
-        with open(fullname, 'rb') as f:
-            try:
-                src_pdf = PdfFileReader(f)
-            except:
-                return
+    def convert_to_images(name, dirname, fullname):
+        for i, page in enumerate(pdf2image.convert_from_path(fullname, 300)):
+            page.save(os.path.join(dirname, f"{name}-{i}.png"), "PNG")
 
-            # Read each page and convert to image
-            for i, page in enumerate(src_pdf.pages, 1):
-                dst_pdf = PdfFileWriter()
-                dst_pdf.addPage(page)
-
-                # Read page to byte stream
-                pdf_bytes = io.BytesIO()
-                dst_pdf.write(pdf_bytes)
-                pdf_bytes.seek(0)
-
-                # Save PNG with white background without alpha channel from byte stream
-                with Image(file=pdf_bytes, resolution=300, background=Color('#fff')) as img:
-                    img.alpha_channel = False
-
-                    # Save image with page number in name
-                    img.save(filename = os.path.join(dirname, name + '-' + str(i) + '.png'))
+    @staticmethod
+    def convert_to_text(dirname, fullname):
+        with open(f"{dirname}/text.txt", "w+") as f:
+            for page in PdfReader(fullname).pages:
+                f.write(page.extract_text() or "")
 
     @staticmethod
     def get_pages_count(fullname):
-        with open(fullname, 'rb') as f:
-            src_pdf = PdfFileReader(f)
-            pages = src_pdf.getNumPages()
-        return pages
+        return len(PdfReader(fullname).pages)
 
+
+class WEBUtil:
+
+    @staticmethod
+    def build_content_disposition(filename, disposition="attachment"):
+        msg = email.message.Message()
+        msg.add_header("Content-Disposition", disposition, filename=filename)
+        return msg["Content-Disposition"]

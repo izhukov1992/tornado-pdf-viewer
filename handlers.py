@@ -3,7 +3,7 @@ import tornado.web
 import shutil
 import datetime
 from conf import MEDIA_DIR
-from utils import PDFUtil
+from utils import PDFUtil, WEBUtil
 
 
 class BaseHandler(tornado.web.RequestHandler):
@@ -86,7 +86,7 @@ class UploadFileHandler(BaseHandler):
         # Recompose folder name while it's not unique
         while os.path.exists(dirname):
             timestamp = int(datetime.datetime.now().timestamp())
-            new_name = name + '-' + str(timestamp)
+            new_name = f"{name}-{timestamp}"
 
             dirname = os.path.join(MEDIA_DIR, new_name)
         else:
@@ -95,7 +95,7 @@ class UploadFileHandler(BaseHandler):
 
             # If folder with initial name exists, update related names
             if timestamp is not None:
-                name = name + '-' + str(timestamp)
+                name = f"{name}-{timestamp}"
                 filename = '.'.join([name, extension])
                 fullname = os.path.join(dirname, filename)
 
@@ -122,7 +122,10 @@ class UploadFileHandler(BaseHandler):
         self.application.ftm.insert_file(filename, username, pages, name)
 
         # Convert PDF to images asynchronously
-        self.application.executor.submit(PDFUtil.convert, name, dirname, fullname)
+        self.application.executor.submit(PDFUtil.convert_to_images, name, dirname, fullname)
+
+        # Convert PDF to text asynchronously
+        self.application.executor.submit(PDFUtil.convert_to_text, dirname, fullname)
 
         # Reddirect to main page
         self.redirect('/')
@@ -167,10 +170,10 @@ class DownloadFileHandler(BaseHandler):
 
         try:
             # Open file from disk
-            with open(fullname, 'rb') as f:
+            with open(fullname, "rb") as f:
                 # Add headers to response
-                self.set_header('Content-Type', 'application/force-download')
-                self.set_header('Content-Disposition', 'attachment; filename=%s' % pdf.filename)
+                self.set_header("Content-Type", "application/octet-stream")
+                self.set_header("Content-Disposition", WEBUtil.build_content_disposition(pdf.filename))
 
                 # Read file and write to response
                 self.write(f.read())
@@ -184,7 +187,7 @@ class DownloadFileHandler(BaseHandler):
             self.response_not_found()
 
 
-class ReviewFileHandler(BaseHandler):
+class ReviewFileImagesHandler(BaseHandler):
 
     @tornado.web.authenticated
     def get(self, id):
@@ -194,3 +197,34 @@ class ReviewFileHandler(BaseHandler):
         # Render and return main page with list of files
         self.render('templates/review.html', filename=pdf.filename, folder=pdf.folder, pages=range(1, pdf.pages+1))
 
+
+class ReviewFileTextHandler(BaseHandler):
+
+    @tornado.web.authenticated
+    def get(self, id):
+        # Get entry of file from database with ID from request
+        pdf = self.application.ftm.select_file(id)
+
+        # Define subfolder name
+        dirname = os.path.join(MEDIA_DIR, pdf.folder)
+
+        # Define full name of file
+        fullname = os.path.join(dirname, "text.txt")
+
+        try:
+            # Open file from disk
+            with open(fullname, "rb") as f:
+                # Add headers to response
+                self.set_header("Content-Type", "application/octet-stream")
+                self.set_header("Content-Disposition", WEBUtil.build_content_disposition(f"{pdf.filename}.txt"))
+
+                # Read file and write to response
+                self.write(f.read())
+
+                # Complete response
+                self.finish()
+
+        except FileNotFoundError:
+            # File was removed
+            # Return 404 respone
+            self.response_not_found()

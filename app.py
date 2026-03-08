@@ -1,6 +1,14 @@
 import tornado.web
 import conf
-from handlers import LoginHandler, IndexHandler, UploadFileHandler, DeleteFileHandler, DownloadFileHandler, ReviewFileHandler
+from handlers import (
+    LoginHandler,
+    IndexHandler,
+    UploadFileHandler,
+    DeleteFileHandler,
+    DownloadFileHandler,
+    ReviewFileImagesHandler,
+    ReviewFileTextHandler
+)
 from db import DataBase, FileTableManager
 
 
@@ -14,7 +22,8 @@ class Application(tornado.web.Application):
             (r'/upload', UploadFileHandler),
             (r'/delete/([^/]+)', DeleteFileHandler),
             (r'/download/([^/]+)', DownloadFileHandler),
-            (r'/review/([^/]+)', ReviewFileHandler),
+            (r'/review/images/([^/]+)', ReviewFileImagesHandler),
+            (r'/review/text/([^/]+)', ReviewFileTextHandler),
             (r'/uploads/(.*)', tornado.web.StaticFileHandler, {'path': 'uploads'}),
         ]
 
